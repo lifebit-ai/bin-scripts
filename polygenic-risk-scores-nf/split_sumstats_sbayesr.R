@@ -1,4 +1,4 @@
-#/usr/bin/env Rscript
+#!/usr/bin/env Rscript
 
 ################################################################################
 # Script for splitting input GWAS summary statistics by chromosome
