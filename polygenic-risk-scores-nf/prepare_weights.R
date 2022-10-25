@@ -1,4 +1,4 @@
-#/usr/bin/env Rscript
+#!/usr/bin/env Rscript
 
 ################################################################################
 # Script for reformatting MEGAPRS output variant weights into a format compliant
