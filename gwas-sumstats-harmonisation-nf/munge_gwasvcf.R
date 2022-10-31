@@ -1,0 +1,187 @@
+#!/usr/bin/env Rscript
+
+################################################################################
+# GWAS VCF harmonisation using MungeSumstats
+#
+# Usage: Rscript munge_gwasvcf.R <input.vcf> <output.vcf> <N>
+# 
+################################################################################
+
+suppressPackageStartupMessages({
+library(optparse)
+library(data.table)
+library(MungeSumstats)
+library(VariantAnnotation)
+library(dplyr)
+})
+
+source('munge_funcs.R')
+
+option_list = list(
+    make_option(c("-s", "--gwas_vcf"), type="character", default=NULL,
+        help="GWAS-VCF input file.", metavar="character"),
+    make_option(c("-o", "--output"), type="character", default=NULL,
+        help="Name of output file.", metavar="character"),
+    make_option(c("-t", "--method"), type="character", default="MSS",
+        help="Sumstats munging method. Valid options: MSS, simple.", metavar="MSS | simple"),
+    make_option(c("--dbsnp"), type="numeric", default="155",
+        help="Specify the version of dbSNP to use for munging. Valid options: 144, 155.", metavar="144 | 155"),
+    make_option(c("-d", "--field_descriptions"), type="character", default="field_descriptions.tsv",
+        help="TSV file containing header information for VCF fields.", metavar="character"),
+    make_option(c("-N", "--ncpus"), type="numeric", default="1",
+        help="Number of cpus to use in any multithreaded operations within the script.", metavar="numeric")
+)
+
+opt_parser = OptionParser(option_list=option_list)
+opt = parse_args(opt_parser)
+
+
+if (!(opt$method %in% c('MSS', 'simple'))) stop(paste("Invalid value for --method :", opt$method, ". Value must be 'MSS' or 'simple'."))
+
+
+# get vcf header
+orig_vcf_header <- VariantAnnotation::scanVcfHeader(opt$gwas_vcf)
+study_metadata <- meta(orig_vcf_header)$SAMPLE
+
+# get genome before harmonising metadata
+genome_build <- meta(orig_vcf_header)$GenomeBuild[[1]]
+
+# read and prepare sumstats table
+vcf <- VariantAnnotation::readVcf(file = opt$gwas_vcf)
+vcf <- expand(vcf, row.names = TRUE)
+vr <- as(vcf, "VRanges")
+mcols(vr)$SNP <- names(vr)
+names(vr) <- NULL
+vcf_dt <- as.data.frame(vr) %>% 
+    select(-any_of(c('end', 'width', 'strand', 'totalDepth', 'refDepth', 'altDepth', 'QUAL'))) %>%
+    rename(CHR = seqnames, BP = start, REF = ref, ALT = alt)
+rm(vr)
+
+# Get number of rows in input
+for (study_id in rownames(study_metadata)){
+    nrows_gwas <- sum(vcf_dt$sampleNames==study_id)
+    study_metadata[study_id, 'TotalVariants'] <- nrows_gwas
+}
+
+# parse table to guess column types
+temp <- data.table::fread(text=capture.output(write.csv(study_metadata, quote=F)), header=T)
+study_metadata <- data.frame(temp[,-1], row.names=temp[,1])
+
+# write out list of traits to map
+write.table(study_metadata$TraitReported, file="reported_traits.tsv", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+if (opt$method == "MSS") {
+    # Trim alleles
+    trimmed <- trim_variants(vcf_dt, a1_col = "REF", a2_col = "ALT", bp_col = "BP")
+    vcf_dt$REF <- trimmed$a1
+    vcf_dt$ALT <- trimmed$a2
+    vcf_dt$BP <- trimmed$bp
+
+    vcf_dt$P <- 10^(-1*vcf_dt$LP)
+
+    # impute missing P vals from beta and SE
+    vcf_dt$P <- impute_p(vcf_dt, , beta_col='ES', se_col='SE', p_col='P')
+
+    #SI -> INFO
+    if("SI" %in% colnames(vcf_dt)){
+        vcf_dt$INFO <- vcf_dt$SI
+        vcf_dt$SI <- NULL
+    }
+
+    vcf_dt$CHR <- recode(vcf_dt$CHR, `23` = 'X', `24` = 'Y', `26` = 'M')
+
+
+    full_sumstats_dt <- data.table()
+
+    for (study_id in rownames(study_metadata)){
+
+        single_vcf_dt <- vcf_dt[vcf_dt$sampleNames==study_id,]
+        
+        # Run sumstats harmonisation
+        MSS_results <- MungeSumstats::format_sumstats(path=single_vcf_dt,
+                                                    ref_genome = genome_build,
+                                                    INFO_filter = 0,
+                                                    pos_se = FALSE,
+                                                    N_dropNA = FALSE,
+                                                    impute_beta=TRUE,
+                                                    impute_se=TRUE,
+                                                    bi_allelic_filter = FALSE, # this unhelpful filter removes anything non-biallelic in dbSNP so keep FALSE
+                                                    allele_flip_frq = FALSE, # this needs to be FALSE when above filter is FALSE
+                                                    rmv_chr = NULL,
+                                                    rmv_chrPrefix = TRUE,
+                                                    dbSNP = opt$dbsnp,
+                                                    return_data = TRUE,
+                                                    return_format = "data.table",
+                                                    imputation_ind = TRUE,
+                                                    nThread = opt$ncpus,
+                                                    log_folder=paste0(study_id, '_mss_log'),
+                                                    log_mungesumstats_msgs=TRUE,
+                                                    log_folder_ind=TRUE)
+        rm(single_vcf_dt)
+        sumstats_dt <- MSS_results$sumstats
+
+        # workaround MT chromosome being replaced by NA (fixed in MungeSumstas >= 5.12)
+        sumstats_dt <- sumstats_dt %>%
+            mutate(CHR = replace(CHR, is.na(CHR) & BP < 16570, "MT"))
+
+        # find multiallelic sites
+        sumstats_dt <- sumstats_dt %>%
+            group_by(CHR, BP) %>%
+            mutate(multiallelic = n() > 1) %>%
+            ungroup()
+
+        # Get inverse frequency when flipping allele except for multiallelic
+        if ('flipped' %in% colnames(sumstats_dt)) {
+        sumstats_dt <- sumstats_dt %>%
+            mutate(flipped = replace(flipped, is.na(flipped), FALSE)) %>%
+            mutate(FRQ = replace(FRQ, flipped == TRUE, 1-FRQ[flipped == TRUE])) %>%
+            mutate(FRQ = replace(FRQ, multiallelic == TRUE && flipped == TRUE, NA))
+        }
+
+        # remove intermediate cols
+        sumstats_dt <- sumstats_dt %>%
+            select(-any_of(c('IMPUTATION_SNP', 'IMPUTATION_BETA', 'IMPUTATION_SE', 'flipped', 'convert_n_integer', 'multiallelic')))
+
+        sumstats_dt$sampleNames <- study_id
+        full_sumstats_dt <- rbind(full_sumstats_dt, sumstats_dt)
+    }
+
+    rm(vcf_dt)
+
+} else if (opt$method == "simple") {
+    #rename columns
+    cols_renamed <- c(SNP = 'SNP', chr = 'CHR', BP = 'BP',
+        REF = 'A1', ALT = 'A2',
+        AF = 'FRQ', ES = 'BETA', OR = 'OR', SE = 'SE',
+        P = 'P', SS = 'N', N_CAS = 'N_CAS',
+        SI = 'INFO', EZ = 'Z')
+    vcf_dt <- vcf_dt %>%
+        rename_with(~recode(., !!!cols_renamed))
+
+    full_sumstats_dt <- simple_sumstats_munge(vcf_dt)
+    rm(vcf_dt)
+
+    # remove duplicates
+    full_sumstats_dt <- full_sumstats_dt %>%
+        distinct(CHR, BP, A1, A2, sampleNames, .keep_all = TRUE)
+}
+
+# remove FILTER col
+full_sumstats_dt <- full_sumstats_dt %>%
+    select(-any_of(c('FILTER')))
+
+full_sumstats_dt <- as(full_sumstats_dt, 'data.table')
+
+# rename chromosomes: 1-22, X->23, Y->24, M/MT->26
+full_sumstats_dt$CHR <- recode(full_sumstats_dt$CHR, X = '23', Y = '24', MT = '26', M = '26')
+
+# Get rows after munging
+for (study_id in rownames(study_metadata)){
+    nrows_harmonised <- sum(full_sumstats_dt$sampleNames==study_id)
+    study_metadata[study_id, 'HarmonisedVariants'] <- nrows_harmonised
+}
+
+# Write sumstats as GWAS VCF with metadata
+full_sumstats_dt <- full_sumstats_dt %>% rename(study_id = sampleNames)
+write_gwas_vcf(full_sumstats_dt, as.data.frame(study_metadata), genome_build,
+                output_filename=opt$output, field_descriptions=opt$field_descriptions)
