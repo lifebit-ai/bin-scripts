@@ -1,0 +1,178 @@
+---
+output: 
+  html_document:
+    code_download: false
+    toc: true                  # table of content true
+    toc_depth: 3               # upto three depths of headings (specified by #, ## and ###)
+    toc_float: true
+    number_sections: true      # if you want number sections at each table header
+    theme: united              # many options for theme, this one is my favorite.
+    highlight: tango           # specifies the syntax highlighting style
+    css: 'style.css'
+params:
+
+  boxPlot_maf_beta: "boxPlot-maf-beta.png"
+  boxPlot_maf_info:
+  boxPlot_maf_p: "boxPlot-maf-p.png"
+  descriptive_statistics: "descriptive_statistics.tsv"
+  frequencyCurve_Absolute_beta: "frequencyCurve-Absolute_beta.png"
+  frequencyCurve_INFO:
+  frequencyCurve_MAF: "frequencyCurve-MAF.png"
+  Manhattan: "Manhattan.png"
+  QQ: "QQ.png"
+  scatterPlot_beta_logp: "scatterPlot-beta-logp.png"
+  scatterPlot_info_logp:
+  scatterPlot_maf_beta: "scatterPlot-maf-beta.png"
+  scatterPlot_maf_info:
+  scatterPlot_maf_p: "scatterPlot-maf-p.png"
+
+  ldsc_log: "None"
+title: "`r paste0('QC GWAS Report' , '') `"
+author: ""
+date: ""
+---
+
+
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo=FALSE)
+```
+
+```{r echo = FALSE}
+source("DTable.R")
+suppressPackageStartupMessages({
+library(magrittr)
+library(DT)
+library(htmltools)
+library(stringr)
+library(dplyr)
+library(kableExtra)
+})
+fignumber<-1
+```
+
+# Visualisations
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Frequency plot absolute beta"
+knitr::include_graphics(params$frequencyCurve_Absolute_beta, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r, eval=length(params$frequencyCurve_INFO)!=0}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Frequency plot info"
+knitr::include_graphics(params$frequencyCurve_INFO, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Frequency plot MAF"
+knitr::include_graphics(params$frequencyCurve_MAF, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1                            
+```
+```{r, eval=length(params$scatterPlot_info_logp)!=0}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Scatter plot info logp"
+knitr::include_graphics(params$scatterPlot_info_logp, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r, eval=length(params$scatterPlot_maf_info)!=0}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Scatter plot MAF info"
+knitr::include_graphics(params$scatterPlot_maf_info, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r, eval=length(params$boxPlot_maf_info)!=0}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Boxplot MAF info"
+knitr::include_graphics(params$boxPlot_maf_info, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Scatter plot MAF p"
+knitr::include_graphics(params$scatterPlot_maf_p, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Boxplot MAF p"
+knitr::include_graphics(params$boxPlot_maf_p, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Scatter plot MAF beta"
+knitr::include_graphics(params$scatterPlot_maf_beta, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Boxplot MAF beta"
+knitr::include_graphics(params$boxPlot_maf_beta, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Scatter plot beta logp"
+knitr::include_graphics(params$scatterPlot_beta_logp, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "QQ plot"
+knitr::include_graphics(params$QQ, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+
+```{r}
+figure_number  <- paste0("Figure ",fignumber,": ")
+figure_caption <- "Manhattan plot"
+knitr::include_graphics(params$Manhattan, )
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+fignumber<-fignumber+1
+```
+
+```{r}
+table   <- as.data.frame(read.table(params$descriptive_statistics, fill = T, sep = "\t", header = T),stringsAsFactors=F)
+DTable(table)
+```
+
