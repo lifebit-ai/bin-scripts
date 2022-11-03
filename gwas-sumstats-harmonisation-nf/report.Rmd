@@ -8,7 +8,7 @@ output:
     number_sections: true      # if you want number sections at each table header
     theme: united              # many options for theme, this one is my favorite.
     highlight: tango           # specifies the syntax highlighting style
-    css: 'style.css'
+    css: 'local_style.css'
 params:
 
   boxPlot_maf_beta: "boxPlot-maf-beta.png"
@@ -39,7 +39,7 @@ knitr::opts_chunk$set(echo=FALSE)
 ```
 
 ```{r echo = FALSE}
-source("DTable.R")
+source("local_DTable.R")
 suppressPackageStartupMessages({
 library(magrittr)
 library(DT)
